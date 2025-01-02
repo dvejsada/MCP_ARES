@@ -1,17 +1,32 @@
 import mcp.types as types
-from mcp.server import Server
+from mcp.server import Server, NotificationOptions
+from mcp.server.models import InitializationOptions
 from ares_call import ARES
+import logging
+from starlette.applications import Starlette
+from starlette.routing import Route
+from mcp.server.sse import SseServerTransport
+import uvicorn
+from starlette.responses import Response, JSONResponse
+import json
 
+def create_server():
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger("mcp-ares")
+    logger.setLevel(logging.DEBUG)
+    logger.info("Starting MCP Ares")
 
-def main():
-    """Run the server using sse"""
-
-    from mcp.server.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Route
-
+    # Initialize base MCP server
     server = Server("mcp-ares")
-    sse = SseServerTransport("/messages")
+
+    init_options = InitializationOptions(
+        server_name="mcp-ares",
+        server_version="0.1",
+        capabilities=server.get_capabilities(
+            notification_options=NotificationOptions(),
+            experimental_capabilities={},
+        ),
+    )
 
     @server.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
@@ -63,39 +78,6 @@ def main():
         else:
             raise ValueError(f"Unknown tool: {name}")
 
-    async def handle_sse(request):
-        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
-            await server.run(streams[0], streams[1], server.create_initialization_options())
-
-    async def handle_messages(request):
-        # Create a dummy response that we'll return to Starlette
-        from starlette.responses import Response
-
-        response = Response("", status_code=202)
-
-        async def send_wrapper(message):
-            # Skip sending response since we're handling it at the Starlette level
-            if (
-                    message["type"] != "http.response.start"
-                    and message["type"] != "http.response.body"
-            ):
-                await request._send(message)
-
-        await sse.handle_post_message(request.scope, request.receive, send_wrapper)
-        return response
-
-
-    starlette_app = Starlette(
-        debug=True,
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Route("/messages", endpoint=handle_messages, methods=["POST"]),
-        ],
-    )
-
-    import uvicorn
-    uvicorn.run(starlette_app, host="0.0.0.0", port=8956)
-
-    return 0
+    return server, init_options
 
 
