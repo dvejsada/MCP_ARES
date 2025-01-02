@@ -3,12 +3,7 @@ from mcp.server import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 from ares_call import ARES
 import logging
-from starlette.applications import Starlette
-from starlette.routing import Route
-from mcp.server.sse import SseServerTransport
-import uvicorn
-from starlette.responses import Response, JSONResponse
-import json
+
 
 def create_server():
     logging.basicConfig(level=logging.DEBUG)
@@ -37,13 +32,13 @@ def create_server():
         return [
             types.Tool(
                 name="get-company-info",
-                description="Get info about any Czech company",
+                description="Get information about any Czech company from public register",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Name of the company to find",
+                            "description": "Name of the Czech company to find information on in public register (e.g. ČEZ, a.s.)",
                         },
                     },
                     "required": ["name"],

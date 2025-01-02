@@ -1,19 +1,22 @@
 import uvicorn
 from starlette.applications import Starlette
-from src.sse import SSEHandler
-from src.server import create_server
+from starlette.routing import Route
+from sse import SSEHandler
+from server import create_server
 import logging
 
 logger = logging.getLogger(__name__)
 
-def create_app():
+def main():
     server, init_options = create_server()
     sse_handler = SSEHandler(server, init_options)
-    app = Starlette(routes=sse_handler.get_routes())
-    return app
 
-def main():
-    app = create_app()
+    routes = [
+        Route("/sse", endpoint=sse_handler.handle_sse),
+        Route("/messages", endpoint=sse_handler.handle_messages, methods=["POST"])
+    ]
+
+    app = Starlette(routes=routes)
     config = uvicorn.Config(
         app,
         host="0.0.0.0",

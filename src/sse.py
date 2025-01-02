@@ -1,8 +1,6 @@
-from starlette.routing import Route
 from starlette.responses import Response
 from mcp.server.sse import SseServerTransport
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +52,3 @@ class SSEHandler:
                 return Response({"error": str(e)}, status_code=500)
             # If we already sent an error response, return our default to prevent None
             return default_response
-
-    def get_routes(self):
-        return [
-            Route("/sse", endpoint=self.handle_sse),
-            Route("/messages", endpoint=self.handle_messages, methods=["POST"])
-        ]
