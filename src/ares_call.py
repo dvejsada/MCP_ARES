@@ -1,6 +1,6 @@
 from typing import Any
 import httpx
-from Scripts.bottle import response
+from httpx import HTTPStatusError
 
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
@@ -15,37 +15,55 @@ def get_current(entries: list) -> Any:
 class ARES:
 
     @staticmethod
-    async def get_base_data(company_name: str) -> str | None:
+    async def get_base_data(company_identificator: str, type: str) -> str | None:
         """Make a request to the ARES API the search for the given company."""
 
-        url: str = "/ekonomicke-subjekty/vyhledat"
-        data: dict = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_name}
-        response = await ARES.make_request("POST", data, url)
+        if type == "name":
+            url: str = "/ekonomicke-subjekty/vyhledat"
+            data: dict = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_identificator}
+            response = await ARES.make_request("POST", data, url)
 
-        """ Checks if there is any company returned. """
-        if response["pocetCelkem"] == 0:
-            response_text = f"No entries found for {company_name}"
+            """ Checks if there is any company returned. """
+            if response["pocetCelkem"] == 0:
+                response_text = f"No entries found for {company_identificator}"
+                return response_text
+
+            """ Checks if there are more than one company """
+            if response["pocetCelkem"] > 1:
+                response_text = f"For {company_identificator} there are multiple entries:"
+                for i in range(len(response["ekonomickeSubjekty"])):
+                    company_info = f" company {response['ekonomickeSubjekty'][i]['obchodniJmeno']}, Id. No. {response['ekonomickeSubjekty'][i]['ico']},"
+                    response_text += company_info
+                response_text += ". Ask which do they want. After reply from user, use 'get-company-info-by-id-number' tool."
+                return response_text
+            """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
+            if response["ekonomickeSubjekty"][0]["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
+                additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ekonomickeSubjekty'][0]['ico']}")
+                formatted_data = ARES.extract_vr_info(additional_data)
+                response_text = ARES.format_vr_data(formatted_data)
+                return response_text
+
+            """ If there is no entry in Commercial Register, return basic data from ARES only. """
+            response_text = ARES.format_base_info(response["ekonomickeSubjekty"][0], company_identificator)
             return response_text
 
-        """ Checks if there are more that one company """
-        if response["pocetCelkem"] > 1:
-            response_text = f"For {company_name} there are multiple entries:"
-            for i in range(len(response["ekonomickeSubjekty"])):
-                company_info = f" company {response['ekonomickeSubjekty'][i]['obchodniJmeno']}, Id. No. {response['ekonomickeSubjekty'][i]['ico']},"
-                response_text += company_info
-            response_text += ". Ask which do they want."
-            return response_text
+        if type == "id":
+            url: str = f"/ekonomicke-subjekty/{company_identificator}"
+            try:
+                response = await ARES.make_request("GET", endpoint_url=url)
+            except HTTPStatusError:
+                return f"No company with Id. No. {company_identificator} found."
 
-        """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
-        if response["ekonomickeSubjekty"][0]["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
-            additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ekonomickeSubjekty'][0]['ico']}")
-            formatted_data = ARES.extract_vr_info(additional_data)
-            response_text = ARES.format_vr_data(formatted_data)
-            return response_text
+            """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
+            if response["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
+                additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ico']}")
+                formatted_data = ARES.extract_vr_info(additional_data)
+                response_text = ARES.format_vr_data(formatted_data)
+                return response_text
 
-        """ If there is no entry in Commercial Register, return basic data from ARES only. """
-        response_text = ARES.format_base_info(response, company_name)
-        return response_text
+            """ If there is no entry in Commercial Register, return basic data from ARES only. """
+            response_text = ARES.format_base_info(response, company_identificator)
+            return response_text
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
@@ -60,16 +78,8 @@ class ARES:
     @staticmethod
     def format_base_info(data: dict, company_name: str) -> str:
         """Format base information into a concise string."""
-        data: list = data["ekonomickeSubjekty"]
-        results: list = []
-        for i in range(len(data)):
-            results.append(
-                f"Company name: {data[i].get('obchodniJmeno', 'Unknown')}\n"
-                f"Company address: {data[i]['sidlo'].get('textovaAdresa', 'Unknown')}\n"
-                f"Company identification number (in Czech IČO): {data[i].get('ico', 'Unknown')}\n"
-                "---\n"
-            )
-        return f"Information from public register for {company_name}:\n" + "".join(results)
+        response_text: str = f"Information from public register for {company_name}:\n---\nCompany name: {data.get('obchodniJmeno', 'Unknown')}\nCompany address: {data['sidlo'].get('textovaAdresa', 'Unknown')}\nCompany identification number (in Czech IČO): {data.get('ico', 'Unknown')}\n---\n"
+        return response_text
 
     @staticmethod
     def extract_vr_info(data: dict) -> dict:
