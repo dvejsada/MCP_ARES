@@ -1,5 +1,6 @@
 from typing import Any
 import httpx
+from Scripts.bottle import response
 
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
@@ -146,13 +147,17 @@ class ARES:
 
         company_info["statutory_bodies"] = result_list
 
-        print(company_info)
-
         return company_info
 
     @staticmethod
     def format_vr_data(data: dict) -> str:
         """Format data from dictionary to string"""
-        response_text = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\nCurrent members of the statutory body: {', '.join(member for member in data['statutory_bodies'])}\nCurrent way of acting on behalf of the company: {data['ways_of_acting']}\n---\n"
-
+        response_text = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\n"
+        for body in data['statutory_bodies']:
+            response_text += f"{body['name_of_body']} - {', '.join(member for member in body['members'])}"
+            if "ways_of_acting" in body:
+                response_text += f" - Way of acting: {body['ways_of_acting']}\n"
+            else:
+                response_text += "\n"
+        response_text += "---\n"
         return response_text
