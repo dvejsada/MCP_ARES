@@ -1,10 +1,12 @@
 from typing import Any
 import httpx
+from Scripts.bottle import response
 
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
 
-def get_current(entries):
+def get_current(entries: list) -> Any:
+    """ Returns current entries. """
     for entry in entries:
         if 'datumVymazu' not in entry:
             return entry
@@ -15,8 +17,9 @@ class ARES:
     @staticmethod
     async def get_base_data(company_name: str) -> str | None:
         """Make a request to the ARES API the search for the given company."""
-        url = "/ekonomicke-subjekty/vyhledat"
-        data = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_name}
+
+        url: str = "/ekonomicke-subjekty/vyhledat"
+        data: dict = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_name}
         response = await ARES.make_request("POST", data, url)
 
         """ Checks if there is any company returned. """
@@ -46,8 +49,8 @@ class ARES:
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
-
-        url = BASE_URL + endpoint_url
+        """ Makes API request to ARES."""
+        url: str = BASE_URL + endpoint_url
 
         async with httpx.AsyncClient() as client:
             response = await client.request(url=url, method=method, headers=HEADERS, json=data, timeout=30.0)
@@ -56,7 +59,7 @@ class ARES:
 
     @staticmethod
     def format_base_info(data: dict, company_name: str) -> str:
-        """Format an alert feature into a concise string."""
+        """Format base information into a concise string."""
         data: list = data["ekonomickeSubjekty"]
         results: list = []
         for i in range(len(data)):
@@ -70,13 +73,14 @@ class ARES:
 
     @staticmethod
     def extract_vr_info(data: dict) -> dict:
+        """ Extracts needed data from API response to dictionary. """
 
-        company_info = {}
+        company_info: dict = {}
 
         """ Gets current name """
-        obchodni_jmeno = get_current(data['zaznamy'][0]['obchodniJmeno'])
-        if obchodni_jmeno:
-            company_info['company_name'] = obchodni_jmeno['hodnota']
+        company_name = get_current(data['zaznamy'][0]['obchodniJmeno'])
+        if company_name:
+            company_info['company_name'] = company_name['hodnota']
         else:
             company_info['company_name'] = "Unknown"
 
@@ -86,44 +90,73 @@ class ARES:
             company_info['ico'] = data['icoId']
 
         """ Gets current address """
-        adresy = data['zaznamy'][0].get('adresy', [])
+        adresy: list = data['zaznamy'][0].get('adresy', [])
         for address_entry in adresy:
             if address_entry['typAdresy'] == 'SIDLO' and 'datumVymazu' not in address_entry:
                 company_info['address'] = address_entry['adresa']['textovaAdresa']
                 break
 
         """ Gets current members of statutory bodies """
-        statutory_bodies = get_current(data['zaznamy'][0].get('statutarniOrgany', []))
-        current_statutory_bodies = []
-        body_members = statutory_bodies.get('clenoveOrganu', [])
-        for member in body_members:
-            if 'datumVymazu' not in member:
-                person = member.get('fyzickaOsoba', member.get('pravnickaOsoba', {}))
-                function = member['clenstvi']['funkce'].get('nazev', '')
-                if person:
-                    jmeno = person.get('jmeno', '')
-                    prijmeni = person.get('prijmeni', '')
-                    obchodni_jmeno = person.get('obchodniJmeno', '')
-                    if jmeno or prijmeni:
-                        name = f"{jmeno} {prijmeni}, funkce: {function}".strip()
-                    else:
-                        name = f"{obchodni_jmeno}, funkce: {function}".strip()
-                    current_statutory_bodies.append(name)
-        company_info['statutory_bodies'] = current_statutory_bodies
+        statutory_bodies_list: list = data['zaznamy'][0].get('statutarniOrgany', [])
+        result_list: list = []
 
-        """ Gets current ways of acting """
-        company_info['ways_of_acting'] = ''
-        way_of_acting = statutory_bodies.get('zpusobJednani', [])
-        for entry in way_of_acting:
-            if 'datumVymazu' not in entry:
-                company_info['ways_of_acting'] = entry['hodnota']
-                break
+        for organ in statutory_bodies_list:
+            name_of_body = organ.get('nazevOrganu', '')
+            body_members = organ.get('clenoveOrganu', [])
+            members_list = []
+
+            for member in body_members:
+                if 'datumVymazu' not in member:
+                    # Get person details
+                    person = member.get('fyzickaOsoba', member.get('pravnickaOsoba', {}))
+                    if person:
+                        name = person.get('jmeno', '')
+                        surname = person.get('prijmeni', '')
+                        company_name = person.get('obchodniJmeno', '')
+                        if name or surname:
+                            name = f"{name} {surname}".strip()
+                        else:
+                            name = company_name.strip()
+                    else:
+                        name = ''
+
+                    """ Get function name if included. """
+                    function = member.get('clenstvi', {}).get('funkce', {}).get('nazev', '')
+                    if function:
+                        name_with_function = f"{name}, {function}"
+                    else:
+                        name_with_function = name
+
+                    members_list.append(name_with_function)
+
+            statutory_bodies = {
+                'name_of_body': name_of_body,
+                'members': members_list
+            }
+
+            """ Include 'ways_of_acting' if 'zpusobJednani' is present"""
+            ways_of_acting = organ.get('zpusobJednani', [])
+            for entry in ways_of_acting:
+                if 'datumVymazu' not in entry:
+                    statutory_bodies['ways_of_acting'] = entry.get('hodnota', '')
+                    break  # Use the first current 'zpusobJednani'
+
+            result_list.append(statutory_bodies)
+
+        company_info["statutory_bodies"] = result_list
 
         return company_info
 
     @staticmethod
     def format_vr_data(data: dict) -> str:
         """Format data from dictionary to string"""
-        response_text = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\nCurrent members of the statutory body: {', '.join(member for member in data['statutory_bodies'])}\nCurrent way of acting on behalf of the company: {data['ways_of_acting']}\n---\n"
 
+        response_text: str = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\n"
+        for body in data['statutory_bodies']:
+            response_text += f"{body['name_of_body']} - {', '.join(member for member in body['members'])}"
+            if "ways_of_acting" in body:
+                response_text += f" - Way of acting: {body['ways_of_acting']}\n"
+            else:
+                response_text += "\n"
+        response_text += "---\n"
         return response_text
