@@ -5,7 +5,7 @@ from Scripts.bottle import response
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
 
-def get_current(entries):
+def get_current(entries: list) -> Any:
     """ Returns current entries. """
     for entry in entries:
         if 'datumVymazu' not in entry:
@@ -17,8 +17,9 @@ class ARES:
     @staticmethod
     async def get_base_data(company_name: str) -> str | None:
         """Make a request to the ARES API the search for the given company."""
-        url = "/ekonomicke-subjekty/vyhledat"
-        data = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_name}
+
+        url: str = "/ekonomicke-subjekty/vyhledat"
+        data: dict = {"start": 0,"pocet": 10,"razeni": ["obchodniJmeno"],"obchodniJmeno": company_name}
         response = await ARES.make_request("POST", data, url)
 
         """ Checks if there is any company returned. """
@@ -48,12 +49,8 @@ class ARES:
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
-        """ Makes API request to ARES.
-            method: A request method
-            data: Request data, if any
-            endpoint_url: URL to the ARES endpoint
-        """
-        url = BASE_URL + endpoint_url
+        """ Makes API request to ARES."""
+        url: str = BASE_URL + endpoint_url
 
         async with httpx.AsyncClient() as client:
             response = await client.request(url=url, method=method, headers=HEADERS, json=data, timeout=30.0)
@@ -76,8 +73,9 @@ class ARES:
 
     @staticmethod
     def extract_vr_info(data: dict) -> dict:
+        """ Extracts needed data from API response to dictionary. """
 
-        company_info = {}
+        company_info: dict = {}
 
         """ Gets current name """
         company_name = get_current(data['zaznamy'][0]['obchodniJmeno'])
@@ -92,15 +90,15 @@ class ARES:
             company_info['ico'] = data['icoId']
 
         """ Gets current address """
-        adresy = data['zaznamy'][0].get('adresy', [])
+        adresy: list = data['zaznamy'][0].get('adresy', [])
         for address_entry in adresy:
             if address_entry['typAdresy'] == 'SIDLO' and 'datumVymazu' not in address_entry:
                 company_info['address'] = address_entry['adresa']['textovaAdresa']
                 break
 
         """ Gets current members of statutory bodies """
-        statutory_bodies_list = data['zaznamy'][0].get('statutarniOrgany', [])
-        result_list = []
+        statutory_bodies_list: list = data['zaznamy'][0].get('statutarniOrgany', [])
+        result_list: list = []
 
         for organ in statutory_bodies_list:
             name_of_body = organ.get('nazevOrganu', '')
@@ -152,7 +150,8 @@ class ARES:
     @staticmethod
     def format_vr_data(data: dict) -> str:
         """Format data from dictionary to string"""
-        response_text = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\n"
+
+        response_text: str = f"Information from Czech Commercial register for {data['company_name']}:\n---\nCompany name: {data['company_name']}\nCompany seat address: {data['address']}\nCompany identification number (in Czech IČO): {data['ico']}\n"
         for body in data['statutory_bodies']:
             response_text += f"{body['name_of_body']} - {', '.join(member for member in body['members'])}"
             if "ways_of_acting" in body:
