@@ -93,27 +93,49 @@ class ARES:
                 break
 
         """ Gets current members of statutory bodies """
-        statutory_bodies = get_current(data['zaznamy'][0].get('statutarniOrgany', []))
-        current_statutory_bodies = []
-        body_members = statutory_bodies.get('clenoveOrganu', [])
-        for member in body_members:
-            if 'datumVymazu' not in member:
-                person = member.get('fyzickaOsoba', member.get('pravnickaOsoba', {}))
-                function = member['clenstvi']['funkce'].get('nazev', '')
-                if person:
-                    jmeno = person.get('jmeno', '')
-                    prijmeni = person.get('prijmeni', '')
-                    obchodni_jmeno = person.get('obchodniJmeno', '')
-                    if jmeno or prijmeni:
-                        name = f"{jmeno} {prijmeni}, funkce: {function}".strip()
+        statutory_bodies_list = data['zaznamy'][0].get('statutarniOrgany', [])
+        result_list = []
+
+        for organ in statutory_bodies_list:
+            name_of_body = organ.get('nazevOrganu', '')
+            clenove_organu = organ.get('clenoveOrganu', [])
+            members_list = []
+
+            for member in clenove_organu:
+                if 'datumVymazu' not in member:
+                    # Get person details
+                    person = member.get('fyzickaOsoba', member.get('pravnickaOsoba', {}))
+                    if person:
+                        jmeno = person.get('jmeno', '')
+                        prijmeni = person.get('prijmeni', '')
+                        obchodni_jmeno = person.get('obchodniJmeno', '')
+                        if jmeno or prijmeni:
+                            name = f"{jmeno} {prijmeni}".strip()
+                        else:
+                            name = obchodni_jmeno.strip()
                     else:
-                        name = f"{obchodni_jmeno}, funkce: {function}".strip()
-                    current_statutory_bodies.append(name)
-        company_info['statutory_bodies'] = current_statutory_bodies
+                        name = ''
+
+                    # Get function if it exists
+                    function = member.get('clenstvi', {}).get('funkce', {}).get('nazev', '')
+                    if function:
+                        name_with_function = f"{name}, funkce: {function}"
+                    else:
+                        name_with_function = name
+
+                    members_list.append(name_with_function)
+
+            organ_dict = {
+                'name_of_body': name_of_body,
+                'members': members_list
+            }
+            result_list.append(organ_dict)
+
+        company_info['statutory_bodies'] = result_list
 
         """ Gets current ways of acting """
         company_info['ways_of_acting'] = ''
-        way_of_acting = statutory_bodies.get('zpusobJednani', [])
+        way_of_acting = statutory_bodies_list.get('zpusobJednani', [])
         for entry in way_of_acting:
             if 'datumVymazu' not in entry:
                 company_info['ways_of_acting'] = entry['hodnota']
