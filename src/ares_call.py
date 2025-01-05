@@ -5,6 +5,7 @@ BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
 
 def get_current(entries):
+    """ Returns current entries. """
     for entry in entries:
         if 'datumVymazu' not in entry:
             return entry
@@ -46,7 +47,11 @@ class ARES:
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
-
+        """ Makes API request to ARES.
+            method: A request method
+            data: Request data, if any
+            endpoint_url: URL to the ARES endpoint
+        """
         url = BASE_URL + endpoint_url
 
         async with httpx.AsyncClient() as client:
@@ -56,7 +61,7 @@ class ARES:
 
     @staticmethod
     def format_base_info(data: dict, company_name: str) -> str:
-        """Format an alert feature into a concise string."""
+        """Format base information into a concise string."""
         data: list = data["ekonomickeSubjekty"]
         results: list = []
         for i in range(len(data)):
@@ -74,9 +79,9 @@ class ARES:
         company_info = {}
 
         """ Gets current name """
-        obchodni_jmeno = get_current(data['zaznamy'][0]['obchodniJmeno'])
-        if obchodni_jmeno:
-            company_info['company_name'] = obchodni_jmeno['hodnota']
+        company_name = get_current(data['zaznamy'][0]['obchodniJmeno'])
+        if company_name:
+            company_info['company_name'] = company_name['hodnota']
         else:
             company_info['company_name'] = "Unknown"
 
@@ -98,48 +103,50 @@ class ARES:
 
         for organ in statutory_bodies_list:
             name_of_body = organ.get('nazevOrganu', '')
-            clenove_organu = organ.get('clenoveOrganu', [])
+            body_members = organ.get('clenoveOrganu', [])
             members_list = []
 
-            for member in clenove_organu:
+            for member in body_members:
                 if 'datumVymazu' not in member:
                     # Get person details
                     person = member.get('fyzickaOsoba', member.get('pravnickaOsoba', {}))
                     if person:
-                        jmeno = person.get('jmeno', '')
-                        prijmeni = person.get('prijmeni', '')
-                        obchodni_jmeno = person.get('obchodniJmeno', '')
-                        if jmeno or prijmeni:
-                            name = f"{jmeno} {prijmeni}".strip()
+                        name = person.get('jmeno', '')
+                        surname = person.get('prijmeni', '')
+                        company_name = person.get('obchodniJmeno', '')
+                        if name or surname:
+                            name = f"{name} {surname}".strip()
                         else:
-                            name = obchodni_jmeno.strip()
+                            name = company_name.strip()
                     else:
                         name = ''
 
-                    # Get function if it exists
+                    """ Get function name if included. """
                     function = member.get('clenstvi', {}).get('funkce', {}).get('nazev', '')
                     if function:
-                        name_with_function = f"{name}, funkce: {function}"
+                        name_with_function = f"{name}, {function}"
                     else:
                         name_with_function = name
 
                     members_list.append(name_with_function)
 
-            organ_dict = {
+            statutory_bodies = {
                 'name_of_body': name_of_body,
                 'members': members_list
             }
-            result_list.append(organ_dict)
 
-        company_info['statutory_bodies'] = result_list
+            """ Include 'ways_of_acting' if 'zpusobJednani' is present"""
+            ways_of_acting = organ.get('zpusobJednani', [])
+            for entry in ways_of_acting:
+                if 'datumVymazu' not in entry:
+                    statutory_bodies['ways_of_acting'] = entry.get('hodnota', '')
+                    break  # Use the first current 'zpusobJednani'
 
-        """ Gets current ways of acting """
-        company_info['ways_of_acting'] = ''
-        way_of_acting = statutory_bodies_list.get('zpusobJednani', [])
-        for entry in way_of_acting:
-            if 'datumVymazu' not in entry:
-                company_info['ways_of_acting'] = entry['hodnota']
-                break
+            result_list.append(statutory_bodies)
+
+        company_info["statutory_bodies"] = result_list
+
+        print(company_info)
 
         return company_info
 
