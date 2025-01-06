@@ -31,8 +31,8 @@ def create_server():
         """
         return [
             types.Tool(
-                name="get-company-info",
-                description="Get information about any Czech company from public register",
+                name="get-company-info-by-name",
+                description="Get information about any Czech company from public register based on name",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -43,7 +43,21 @@ def create_server():
                     },
                     "required": ["name"],
                 },
-            )
+            ),
+            types.Tool(
+                name="get-company-info-by-id-number",
+                description="Get information about any Czech company from public register based on identification number",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "id_number": {
+                            "type": "string",
+                            "description": "Identification number (in Czech 'IČO') of the Czech company to find information on in public register (e.g. 26858974)",
+                        },
+                    },
+                    "required": ["id_number"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -56,12 +70,26 @@ def create_server():
         if not arguments:
             raise ValueError("Missing arguments")
 
-        if name == "get-company-info":
+        if name == "get-company-info-by-name":
             company_name = arguments.get("name")
             if not company_name:
                 raise ValueError("Missing name parameter")
 
-            result_text = await ARES.get_base_data(company_name)
+            result_text = await ARES.get_base_data(company_name, "name")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result_text
+                )
+            ]
+
+        elif name == "get-company-info-by-id-number":
+            company_id = arguments.get("id_number")
+            if not company_id:
+                raise ValueError("Missing Id. number parameter")
+
+            result_text = await ARES.get_base_data(company_id, "id")
 
             return [
                 types.TextContent(
