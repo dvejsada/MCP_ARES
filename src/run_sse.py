@@ -1,6 +1,6 @@
 import uvicorn
 from starlette.applications import Starlette
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 from sse import SSEHandler
 from server import create_server
 import logging
@@ -13,7 +13,7 @@ def main():
 
     routes = [
         Route("/sse", endpoint=sse_handler.handle_sse),
-        Route("/messages", endpoint=sse_handler.handle_messages, methods=["POST"])
+        Mount("/messages/", app=sse_handler.sse.handle_post_message)
     ]
 
     app = Starlette(routes=routes)
