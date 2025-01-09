@@ -2,6 +2,7 @@ import mcp.types as types
 from mcp.server import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 from ares_call import ARES
+from supreme_court_call import get_decision
 import logging
 
 
@@ -12,11 +13,11 @@ def create_server():
     logger.info("Starting MCP Ares")
 
     # Initialize base MCP server
-    server = Server("mcp-ares")
+    server = Server("ares")
 
     init_options = InitializationOptions(
-        server_name="mcp-ares",
-        server_version="0.1",
+        server_name="ares",
+        server_version="0.3",
         capabilities=server.get_capabilities(
             notification_options=NotificationOptions(),
             experimental_capabilities={},
@@ -58,6 +59,20 @@ def create_server():
                     "required": ["id_number"],
                 },
             ),
+            types.Tool(
+                name="get-supreme-court-decision-by-case-no",
+                description="Get Czech Supreme court decision based on file number",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "case_number": {
+                            "type": "string",
+                            "description": "Case number of the decision. Must contain 2 digits, break, than text 'Cdo', break and than case number, slash and year(e.g. 21 Cdo 1096/2021). If it does not contain text 'Cdo', it is not valid Supreme court case number",
+                        },
+                    },
+                    "required": ["case_number"],
+                },
+            )
         ]
 
     @server.call_tool()
@@ -90,6 +105,20 @@ def create_server():
                 raise ValueError("Missing Id. number parameter")
 
             result_text = await ARES.get_base_data(company_id, "id")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result_text
+                )
+            ]
+
+        elif name == "get-supreme-court-decision-by-case-no":
+            case_no = arguments.get("case_number")
+            if not case_no:
+                raise ValueError("Missing case number parameter")
+
+            result_text = get_decision(case_no)
 
             return [
                 types.TextContent(
