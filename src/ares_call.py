@@ -48,7 +48,7 @@ class ARES:
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ekonomickeSubjekty'][0]['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text + isir_data
+                return response_text + isir_data + esm_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response["ekonomickeSubjekty"][0], company_identificator)
@@ -71,7 +71,7 @@ class ARES:
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text + isir_data
+                return response_text + isir_data + esm_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response, company_identificator)
