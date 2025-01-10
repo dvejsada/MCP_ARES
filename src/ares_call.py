@@ -41,18 +41,19 @@ class ARES:
 
             """ Fetches data from insolvency register. """
             isir_data = ARES.get_isir_data(response['ekonomickeSubjekty'][0]['ico'])
+            esm_data = ARES.get_beneficial_owners(response['ekonomickeSubjekty'][0]['ico'])
 
             """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
             if response["ekonomickeSubjekty"][0]["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ekonomickeSubjekty'][0]['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text + isir_data
+                return response_text + isir_data + esm_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response["ekonomickeSubjekty"][0], company_identificator)
 
-            return response_text + isir_data
+            return response_text + isir_data + esm_data
 
         if type == "id":
             url: str = f"/ekonomicke-subjekty/{company_identificator}"
@@ -63,17 +64,18 @@ class ARES:
 
             """ Fetches data from insolvency register. """
             isir_data = ARES.get_isir_data(response['ico'])
+            esm_data = ARES.get_beneficial_owners(response['ico'])
 
             """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
             if response["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text + isir_data
+                return response_text + isir_data + esm_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response, company_identificator)
-            return response_text + isir_data
+            return response_text + isir_data + esm_data
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
@@ -195,13 +197,11 @@ class ARES:
         response = requests.get(url, params=params)
         response.encoding = 'utf-8'  # Ensure correct encoding
         soup = BeautifulSoup(response.text, 'html.parser')
-        print(soup)
         # Check if any entry was found
         count_elem = soup.find('td', string='POČET NALEZENÝCH DLUŽNÍKŮ')
         if count_elem:
             count_text = count_elem.find_next_sibling('td').text.strip()
             count = int(count_text)
-            print(count)
         else:
             count = 0
 
@@ -226,3 +226,50 @@ class ARES:
                 detail_link = 'Neznámý'
 
             return f"Pozor, společnost má záznam v insolvenčním rejtříku. Stav řízení: {stav_rizeni}, více informací zde: {detail_link}"
+
+    @staticmethod
+    def get_beneficial_owners(company_id):
+        url = f'https://esm.justice.cz/ias/issm/rejstrik-$sm?p%3A%3Asubmit=x&.%2Frejstrik-%24sm=&ico={company_id}&polozek=50&typHledani=STARTS_WITH'
+        headers = {
+            'User-Agent': 'Mozilla/5.0'
+        }
+        response = requests.get(url, headers=headers)
+
+        html_content = response.text
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        search_results = soup.find('div', {'id': 'SearchResults'})
+
+        if search_results:
+            # Check if there are beneficial owners
+            h2_text = search_results.find('h2').get_text(strip=True)
+            if 'Počet nalezených skutečných majitelů: 0' in h2_text or 'není v evidenci skutečných majitelů veden žádný údaj' in html_content:
+                return 'Nebyl proveden zápis skutečných majitelů.'
+            else:
+                results = []
+                result_items = search_results.find_all('li', class_='result')
+                for item in result_items:
+                    name_tag = item.find('th', string='Jméno:')
+                    if name_tag:
+                        name = name_tag.find_next_sibling('td').get_text(strip=True)
+                        angazma_tag = item.find('th', string='Angažmá:')
+                        participation_type = angazma_tag.find_next_sibling('td').get_text(strip=True) if angazma_tag else ''
+                        link_tag = item.find('a', string='Částečný výpis platných údajů')
+                        link = 'https://esm.justice.cz' + link_tag['href'] if link_tag else ''
+                        results.append({
+                            'name': name,
+                            'participation_type': participation_type,
+                            'extract_link': link
+                        })
+
+                # Format the results into the specified string
+                formatted_string = f'Skuteční majitelé({len(results)}): '
+                formatted_entries = []
+                for owner in results:
+                    entry = f"{owner['name']}, {owner['participation_type']}, odkaz na výpis: {owner['extract_link']}"
+                    formatted_entries.append(entry)
+                formatted_string += '; '.join(formatted_entries)
+                return formatted_string
+
+        else:
+            return 'Nebyl proveden zápis skutečných majitelů.'
