@@ -17,7 +17,7 @@ def create_server():
 
     init_options = InitializationOptions(
         server_name="ares",
-        server_version="0.3",
+        server_version="0.5",
         capabilities=server.get_capabilities(
             notification_options=NotificationOptions(),
             experimental_capabilities={},
