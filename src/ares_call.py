@@ -1,6 +1,8 @@
 from typing import Any
 import httpx
 from httpx import HTTPStatusError
+from bs4 import BeautifulSoup
+import requests
 
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
@@ -36,16 +38,21 @@ class ARES:
                     response_text += company_info
                 response_text += ". Ask which do they want. After reply from user, use 'get-company-info-by-id-number' tool."
                 return response_text
+
+            """ Fetches data from insolvency register. """
+            isir_data = ARES.get_isir_data(response['ekonomickeSubjekty'][0]['ico'])
+
             """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
             if response["ekonomickeSubjekty"][0]["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ekonomickeSubjekty'][0]['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text
+                return response_text + isir_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response["ekonomickeSubjekty"][0], company_identificator)
-            return response_text
+
+            return response_text + isir_data
 
         if type == "id":
             url: str = f"/ekonomicke-subjekty/{company_identificator}"
@@ -54,16 +61,19 @@ class ARES:
             except HTTPStatusError:
                 return f"No company with Id. No. {company_identificator} found."
 
+            """ Fetches data from insolvency register. """
+            isir_data = ARES.get_isir_data(response['ico'])
+
             """ Checks if the company has entry in Commercial Register, if yes, fetches the data. """
             if response["seznamRegistraci"]["stavZdrojeVr"] == "AKTIVNI":
                 additional_data = await ARES.make_request("GET", endpoint_url=f"/ekonomicke-subjekty-vr/{response['ico']}")
                 formatted_data = ARES.extract_vr_info(additional_data)
                 response_text = ARES.format_vr_data(formatted_data)
-                return response_text
+                return response_text + isir_data
 
             """ If there is no entry in Commercial Register, return basic data from ARES only. """
             response_text = ARES.format_base_info(response, company_identificator)
-            return response_text
+            return response_text + isir_data
 
     @staticmethod
     async def make_request(method: str, data: dict | None = None, endpoint_url: str = ""):
@@ -170,3 +180,49 @@ class ARES:
                 response_text += "\n"
         response_text += "---\n"
         return response_text
+
+    @staticmethod
+    def get_isir_data(id_number):
+
+        url = "https://isir.justice.cz/isir/ueu/vysledek_lustrace.do"
+        params = {
+            'ic': id_number,
+            'aktualnost': 'AKTUALNI_I_UKONCENA',
+            'rowsAtOnce': '50',
+            'spis_znacky_obdobi': '14DNI'
+        }
+
+        response = requests.get(url, params=params)
+        response.encoding = 'utf-8'  # Ensure correct encoding
+        soup = BeautifulSoup(response.text, 'html.parser')
+        print(soup)
+        # Check if any entry was found
+        count_elem = soup.find('td', string='POČET NALEZENÝCH DLUŽNÍKŮ')
+        if count_elem:
+            count_text = count_elem.find_next_sibling('td').text.strip()
+            count = int(count_text)
+            print(count)
+        else:
+            count = 0
+
+        if count == 0:
+            return "Bez záznamu v insolvenčním rejtříku."
+        else:
+            # Scrape 'Stav řízení' and 'detail' link
+            stav_rizeni_elem = soup.find('th', string=lambda text: text and 'Stav řízení:' in text)
+            if stav_rizeni_elem:
+                stav_rizeni_td = stav_rizeni_elem.find_next_sibling('td')
+                if stav_rizeni_td:
+                    stav_rizeni = stav_rizeni_td.get_text(strip=True)
+                else:
+                    stav_rizeni = 'Neznámý'
+            else:
+                stav_rizeni = 'Neznámý'
+
+            detail_elem = soup.find('a', href=lambda href: href and 'evidence_upadcu_detail.do' in href)
+            if detail_elem:
+                detail_link = 'https://isir.justice.cz/isir/ueu/' + detail_elem['href']
+            else:
+                detail_link = 'Neznámý'
+
+            return f"Pozor, společnost má záznam v insolvenčním rejtříku. Stav řízení: {stav_rizeni}, více informací zde: {detail_link}"
