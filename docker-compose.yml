@@ -1,5 +1,5 @@
 services:
-  mcp-decisions:
+  mcp-ares:
     image: georgx22/mcp-ares:latest
     container_name: mcp-ares
     restart: always
