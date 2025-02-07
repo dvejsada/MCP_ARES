@@ -1,0 +1,7 @@
+services:
+  mcp-decisions:
+    image: georgx22/mcp-ares:latest
+    container_name: mcp-ares
+    restart: always
+    ports:
+      - "8956:8956"
