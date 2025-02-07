@@ -2,7 +2,6 @@ from typing import Any
 import httpx
 from httpx import HTTPStatusError
 from bs4 import BeautifulSoup
-import requests
 
 BASE_URL = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/"
 HEADERS = {"Content-Type": "application/json","accept": "application/json"}
@@ -97,29 +96,38 @@ class ARES:
     def extract_vr_info(data: dict) -> dict:
         """ Extracts needed data from API response to dictionary. """
 
+        # Checks for current data as certain companies have more than 1 entry
+        if len(data['zaznamy']) > 1:
+            for i in range(len(data['zaznamy'])):
+                print(i)
+                if data['zaznamy'][i]["primarniZaznam"]:
+                    current_data = int(i)
+        else:
+            current_data = 0
+
         company_info: dict = {}
 
         """ Gets current name """
-        company_name = get_current(data['zaznamy'][0]['obchodniJmeno'])
+        company_name = get_current(data['zaznamy'][current_data]['obchodniJmeno'])
         if company_name:
             company_info['company_name'] = company_name['hodnota']
         else:
             company_info['company_name'] = "Unknown"
 
         """ Extracts ICO """
-        current_ico = get_current(data['zaznamy'][0]['ico'])
+        current_ico = get_current(data['zaznamy'][current_data]['ico'])
         if current_ico:
             company_info['ico'] = data['icoId']
 
         """ Gets current address """
-        adresy: list = data['zaznamy'][0].get('adresy', [])
+        adresy: list = data['zaznamy'][current_data].get('adresy', [])
         for address_entry in adresy:
             if address_entry['typAdresy'] == 'SIDLO' and 'datumVymazu' not in address_entry:
                 company_info['address'] = address_entry['adresa']['textovaAdresa']
                 break
 
         """ Gets current members of statutory bodies """
-        statutory_bodies_list: list = data['zaznamy'][0].get('statutarniOrgany', [])
+        statutory_bodies_list: list = data['zaznamy'][current_data].get('statutarniOrgany', [])
         result_list: list = []
 
         for organ in statutory_bodies_list:
@@ -194,7 +202,7 @@ class ARES:
             'spis_znacky_obdobi': '14DNI'
         }
 
-        response = requests.get(url, params=params)
+        response = httpx.get(url, params=params)
         response.encoding = 'utf-8'  # Ensure correct encoding
         soup = BeautifulSoup(response.text, 'html.parser')
         # Check if any entry was found
@@ -233,7 +241,7 @@ class ARES:
         headers = {
             'User-Agent': 'Mozilla/5.0'
         }
-        response = requests.get(url, headers=headers)
+        response = httpx.get(url, headers=headers)
 
         html_content = response.text
         soup = BeautifulSoup(html_content, 'html.parser')
